@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import AnimeCard from "@/components/anime-card";
+import AnimeDetailModal from "@/components/anime-detail-modal";
 import type { SubjectV0 } from "@/lib/bangumi/types";
 
 const QUARTER_MONTHS = [1, 4, 7, 10];
@@ -24,21 +25,7 @@ export default function SeasonsPage() {
   const [error, setError] = useState<string | null>(null);
   const [addedIds, setAddedIds] = useState<Set<number>>(new Set());
   const [addingIds, setAddingIds] = useState<Set<number>>(new Set());
-
-  const load = useCallback(() => {
-    setError(null);
-    fetch(`/api/seasons?year=${year}&month=${month}`)
-      .then((res) => res.json())
-      .then((body) => {
-        if (body.error) setError(body.error);
-        else {
-          setItems(body.items ?? []);
-          setTotal(body.total ?? 0);
-        }
-      })
-      .catch(() => setError("季度新番加载失败"))
-      .finally(() => setLoading(false));
-  }, [year, month]);
+  const [detail, setDetail] = useState<SubjectV0 | null>(null);
 
   useEffect(() => {
     fetch(`/api/seasons?year=${year}&month=${month}`)
@@ -153,8 +140,10 @@ export default function SeasonsPage() {
               coverUrl={s.images?.medium}
               score={s.rating?.score}
               date={s.date}
+              tags={(s.tags ?? []).map((t) => t.name)}
               bangumiId={s.id}
               watchTitle={s.name_cn || s.name}
+              onDetail={() => setDetail(s)}
               extra={
                 addedIds.has(s.id) ? (
                   <div
@@ -172,7 +161,10 @@ export default function SeasonsPage() {
                   </div>
                 ) : (
                   <button
-                    onClick={() => addToTracking(s)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addToTracking(s);
+                    }}
                     disabled={addingIds.has(s.id)}
                     style={{
                       marginTop: 6,
@@ -192,6 +184,21 @@ export default function SeasonsPage() {
             />
           ))}
         </div>
+      )}
+
+      {detail && (
+        <AnimeDetailModal
+          title={detail.name}
+          titleCn={detail.name_cn}
+          coverUrl={detail.images?.medium}
+          score={detail.rating?.score}
+          date={detail.date}
+          tags={(detail.tags ?? []).map((t) => t.name)}
+          summary={detail.summary}
+          bangumiId={detail.id}
+          watchTitle={detail.name_cn || detail.name}
+          onClose={() => setDetail(null)}
+        />
       )}
     </main>
   );
