@@ -1,0 +1,22 @@
+# 追番助手本地 PostgreSQL（M1）
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: anime-tracker-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: anime
+      POSTGRES_PASSWORD: anime
+      POSTGRES_DB: anime_tracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - anime_tracker_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anime -d anime_tracker"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  anime_tracker_pgdata:
