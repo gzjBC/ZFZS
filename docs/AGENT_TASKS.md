@@ -71,14 +71,14 @@ client.season(year=2026, month=10, limit=50)
 | Herschel | 基于个人评分的 Qwen/DeepSeek 推荐服务 | 39 项专项测试通过，已整合 |
 | James | 系统通知、跨午夜提醒、可选后台进程 | 通知专项及真实后台入口验收通过，已整合 |
 | Leibniz | 个人评分、数据管理、AI 页和后台控件的原生 UI | 42 项原生烟测通过，已整合 |
-| 主 Agent | 评分模型迁移、隔离 PostgreSQL 验收、整合打包和 GitHub 同步 | 桌面 201 项、Web 108 项通过；Windows 已重新打包，GitHub 已同步，云端 CI/打包验收中 |
+| 主 Agent | 评分模型迁移、隔离 PostgreSQL 验收、整合打包和 GitHub 同步 | 桌面 201 项、Web 108 项通过；GitHub 已同步，跨平台 CI 和 Mac 云端打包已通过；Windows 云端归档验收中 |
 
 第二轮互不重叠的修改范围为 transfer_service、recommendation_service、notification_service/reminder_service 和桌面 UI。API Key 仅允许用户通过环境变量或会话输入提供；不自动发起付费 AI 调用，不自动启用后台或开机自启。导入默认保留本地冲突记录，更新已存在记录需用户明确选择。
 
 ## 仍需外部环境验收的事项
 
 - macOS 实机验证、签名与发行包。
-- Actions 的 Windows/macOS CI 与打包最终结果；主 Agent 正在跟进真实云端验收。
+- Windows 云端 ZIP 归档最终结果；Windows/macOS/Web CI 与 Mac 云端构建已经通过。
 - 真实供应商 AI Key 与用户选择后的付费请求；自动化仅使用模拟服务。
 
 第一轮和第二轮各四个子任务均已交付。主 Agent 已复验第二轮 201 项单测、42 项原生 UI 检查、108 项 Web 验收，并完成源码与打包版后台启停、Web 转换器→桌面导入器互通验收。Mac、真实 AI 和通知可见性仍依赖目标环境，GitHub 发布状态以实际提交为准。

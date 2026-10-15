@@ -116,7 +116,7 @@ Windows 分发必须包括完整 `ZFZS-Anime-Tracker/` 目录，不能只发 `.e
 
 ## CI 与仍需 Mac 人工验收的边界
 
-`ci.yml` 在 Windows/macOS 各自准备规范环境，然后复用同一环境跑单元测试和静态语法检查。`desktop-build.yml` 手动触发，在每个平台只准备一次开发依赖，随后以禁止安装模式测试／构建；macOS 另做解压回验后上传 ZIP。工作流文件检查通过不代表 GitHub Actions 已运行或成功。
+`ci.yml` 在 Windows/macOS 各自准备规范环境，然后复用同一环境跑单元测试和静态语法检查。`desktop-build.yml` 手动触发，在每个平台只准备一次开发依赖，随后以禁止安装模式测试／构建；macOS 另做解压回验后上传 ZIP。[2026-10-15 的 CI](https://github.com/gzjBC/ZFZS/actions/runs/38691850101) 已在 Windows/macOS/Web 全部通过；[macOS 云端打包任务](https://github.com/gzjBC/ZFZS/actions/runs/38691856632/job/116279348127) 也已完成 `.app` 构建、解压回验及产物上传。此结果不替代下面的目标 Mac 图形界面验收。
 
 Mac 人工验收清单（本轮 Windows 工作区不能替代）：
 
@@ -128,7 +128,7 @@ Mac 人工验收清单（本轮 Windows 工作区不能替代）：
 - 分别记录本机包与下载 artifact 的系统安全提示，不绕过 Gatekeeper；没有签名／公证不是已完成外部分发验收。
 - 如需支持另一 CPU 架构或更旧 macOS，必须在目标组合单独构建／运行验证，不能从单台 CI runner 推断兼容。
 
-当前已在 Windows 完成单元测试、真实 Tk 窗口烟测、独立程序构建启动，以及源码/打包后台进程启停验证；macOS 脚本仅做静态审查，没有声称 macOS 构建、启动或 GitHub Actions 实跑成功。
+当前已在 Windows 完成单元测试、真实 Tk 窗口烟测、独立程序构建启动，以及源码/打包后台进程启停验证；macOS 已通过真实云端单测和 `.app` 构建/归档回验。尚未验证目标 Mac 上的 Finder 启动、系统通知显示和 Gatekeeper 行为，也没有签名/公证或全架构兼容性承诺。
 
 ## 本轮新增功能的 Mac 验收
 

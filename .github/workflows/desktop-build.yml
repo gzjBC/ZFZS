@@ -30,7 +30,10 @@ jobs:
           .\scripts\run_desktop.ps1 -PrepareOnly -BuildDependencies
           .\scripts\test.ps1 -NoInstall
           .\scripts\build_desktop.ps1 -NoInstall
-          Compress-Archive -LiteralPath 'dist/ZFZS-Anime-Tracker' -DestinationPath 'dist/ZFZS-Windows.zip' -Force
+          # Python emits standard '/' ZIP paths on both PowerShell 5.1 and pwsh.
+          $python = & .\scripts\run_desktop.ps1 -PrintPython -NoInstall -BuildDependencies
+          & $python -m zipfile -c dist/ZFZS-Windows.zip dist/ZFZS-Anime-Tracker
+          if ($LASTEXITCODE -ne 0) { throw 'Windows archive creation failed.' }
           if ((Get-Item 'dist/ZFZS-Windows.zip').Length -eq 0) { throw 'Empty Windows archive.' }
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $archive = [IO.Compression.ZipFile]::OpenRead((Join-Path $PWD 'dist/ZFZS-Windows.zip'))
