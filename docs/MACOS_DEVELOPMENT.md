@@ -116,7 +116,9 @@ Windows 分发必须包括完整 `ZFZS-Anime-Tracker/` 目录，不能只发 `.e
 
 ## CI 与仍需 Mac 人工验收的边界
 
-`ci.yml` 在 Windows/macOS 各自准备规范环境，然后复用同一环境跑单元测试和静态语法检查。`desktop-build.yml` 手动触发，在每个平台只准备一次开发依赖，随后以禁止安装模式测试／构建；macOS 另做解压回验后上传 ZIP。[2026-10-15 的 CI](https://github.com/gzjBC/ZFZS/actions/runs/38691850101) 已在 Windows/macOS/Web 全部通过；[macOS 云端打包任务](https://github.com/gzjBC/ZFZS/actions/runs/38691856632/job/116279348127) 也已完成 `.app` 构建、解压回验及产物上传。此结果不替代下面的目标 Mac 图形界面验收。
+`ci.yml` 在 Windows/macOS 各自准备规范环境，然后复用同一环境跑单元测试和静态语法检查。`desktop-build.yml` 手动触发，在每个平台只准备一次开发依赖，随后以禁止安装模式测试／构建；macOS 另做解压回验后上传 ZIP。[2026-10-15 的 CI](https://github.com/gzjBC/ZFZS/actions/runs/38692538752) 已在 Windows/macOS/Web 全部通过；[Windows/macOS 云端打包](https://github.com/gzjBC/ZFZS/actions/runs/38692553199) 均成功。此结果不替代下面的目标 Mac 图形界面验收。
+
+在成功打包运行页的 Artifacts 下载 `ZFZS-macOS-ARM64` 或 `ZFZS-Windows-X64`。Actions 下载的外层 ZIP 中是平台分发 ZIP，再解开内层 ZIP 后才是应用目录。当前 Mac 包仅覆盖 Apple Silicon/ARM64，不是 Intel 或 universal2；Intel Mac 仍需按前述方法在目标架构构建。Mac 包未做发行签名/公证。
 
 Mac 人工验收清单（本轮 Windows 工作区不能替代）：
 

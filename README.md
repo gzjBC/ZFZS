@@ -63,7 +63,7 @@ npm run dev
 
 桌面端的“数据管理”可导出、导入和备份追番记录；“AI 推荐”仅在主动点击后向所选供应商发送已看完且有个人评分的标题/标签和偏好。后台系统提醒须主动启动，关闭窗口后可继续运行；没有注册开机自启。API Key 可仅在本次会话输入，不写入备份。
 
-验证状态（2026-10-15）：Python 单测 201/201、原生窗口检查 42/42 通过；真实日历/季度查询、数据跨项目迁移、源码后台进程启停已验证。Web 在独立的临时 PostgreSQL 17 中通过 lint、类型检查和 108/108 项测试，未改动本机原有数据库。[GitHub CI](https://github.com/gzjBC/ZFZS/actions/runs/38691850101) 的 Windows、macOS、Web 三个任务均已通过，Mac `.app` 已在云端构建及归档回验。目标 Mac 的 Finder/Gatekeeper、真实付费 AI 请求及系统通知可见性尚未验收。
+验证状态（2026-10-15）：Python 单测 201/201、原生窗口检查 42/42 通过；真实日历/季度查询、数据跨项目迁移、源码后台进程启停已验证。Web 在独立的临时 PostgreSQL 17 中通过 lint、类型检查和 108/108 项测试，未改动本机原有数据库。[GitHub CI](https://github.com/gzjBC/ZFZS/actions/runs/38692538752) 的 Windows、macOS、Web 三个任务均已通过；[Windows x64 / macOS ARM64 构建](https://github.com/gzjBC/ZFZS/actions/runs/38692553199) 均成功，产物可在该页面下载。目标 Mac 的 Finder/Gatekeeper、真实付费 AI 请求及系统通知可见性尚未验收。
 
 详细说明见 [desktop/README.md](desktop/README.md)、[web/README.md](web/README.md) 和 [docs/项目整合与跨平台进度书.md](docs/项目整合与跨平台进度书.md)。
 
