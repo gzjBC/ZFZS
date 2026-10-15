@@ -325,7 +325,7 @@ class DesktopFeatureTests(unittest.TestCase):
                 patch("tkinter.Tk", side_effect=AssertionError("Worker must not create Tk")):
             runpy.run_path(str(ui.__file__), run_name="__main__")
             self.assertEqual(os.environ["ZFZS_DATA_DIR"], str(self.data_dir.resolve()))
-            self.assertEqual(os.environ["DATABASE_URL"], f"sqlite:///{(self.data_dir / 'zfzs.db').as_posix()}")
+            self.assertEqual(os.environ["DATABASE_URL"], f"sqlite:///{(self.data_dir.resolve() / 'zfzs.db').as_posix()}")
         self.notification.run_worker.assert_called_once_with(self.data_dir.resolve())
 
     def test_busy_guard_does_not_open_file_dialog_or_send_ai_or_spawn_worker(self):

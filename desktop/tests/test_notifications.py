@@ -219,8 +219,9 @@ class WorkerControlTests(TemporaryDatabaseTest):
         launch.assert_called_once()
         command, options = launch.call_args.args[0], launch.call_args.kwargs
         self.assertEqual(Path(command[1]).name, "reminder_worker.py")
-        self.assertEqual(command[2:], ["--data-dir", str(self.data_dir)])
-        self.assertEqual(options["env"]["DATABASE_URL"], f"sqlite:///{(self.data_dir / 'zfzs.db').as_posix()}")
+        # macOS /var symlinks and Windows short temp paths must compare canonically.
+        self.assertEqual(command[2:], ["--data-dir", str(self.data_dir.resolve())])
+        self.assertEqual(options["env"]["DATABASE_URL"], f"sqlite:///{(self.data_dir.resolve() / 'zfzs.db').as_posix()}")
         self.assertNotIn("DASHSCOPE_API_KEY", options["env"])
         self.assertEqual(options["stdout"], subprocess.DEVNULL)
         self.assertEqual(options["stdin"], subprocess.DEVNULL)
@@ -229,7 +230,7 @@ class WorkerControlTests(TemporaryDatabaseTest):
     def test_frozen_start_uses_worker_flag_not_the_python_script(self):
         with patch("backend.app.db.session.engine", self.engine), patch.object(ns.sys, "frozen", True, create=True), patch.object(ns.subprocess, "Popen", side_effect=self.simulate_launch) as launch:
             self.assertTrue(ns.start_background_worker(self.data_dir))
-        self.assertEqual(launch.call_args.args[0], [ns.sys.executable, "--reminder-worker", "--data-dir", str(self.data_dir)])
+        self.assertEqual(launch.call_args.args[0], [ns.sys.executable, "--reminder-worker", "--data-dir", str(self.data_dir.resolve())])
 
     def test_custom_memory_database_is_explicitly_refused(self):
         custom = create_engine("sqlite:///:memory:")
@@ -332,8 +333,8 @@ class WorkerControlTests(TemporaryDatabaseTest):
 
         with patch.dict(os.environ, {"DATABASE_URL": "sqlite:///WRONG.db"}), patch.object(ns, "run_worker") as worker:
             reminder_worker.main(["--data-dir", str(self.data_dir), "--poll-seconds", "2"])
-            self.assertEqual(os.environ["DATABASE_URL"], f"sqlite:///{(self.data_dir / 'zfzs.db').as_posix()}")
-        worker.assert_called_once_with(self.data_dir, 2)
+            self.assertEqual(os.environ["DATABASE_URL"], f"sqlite:///{(self.data_dir.resolve() / 'zfzs.db').as_posix()}")
+        worker.assert_called_once_with(self.data_dir.resolve(), 2)
 
     def test_stop_during_dispatch_prevents_the_rest_of_the_batch(self):
         self.add_anime()
