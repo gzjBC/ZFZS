@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import ctypes
 import os
 import queue
@@ -8,7 +9,7 @@ import threading
 import webbrowser
 from datetime import date
 from pathlib import Path
-from tkinter import BooleanVar, IntVar, StringVar, Tk, Toplevel, TclError, messagebox
+from tkinter import BooleanVar, IntVar, StringVar, Tk, Toplevel, TclError, filedialog, messagebox
 from tkinter import ttk
 from typing import Any, Callable
 from pydantic import ValidationError
@@ -17,12 +18,31 @@ from pydantic import ValidationError
 PROJECT_ROOT = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+
+def _parse_arguments(argv=None):
+    parser = argparse.ArgumentParser(description="ZFZS 原生追番助手")
+    parser.add_argument("--reminder-worker", action="store_true", help="仅运行后台提醒，不创建窗口")
+    parser.add_argument("--data-dir", type=Path, help="桌面数据目录")
+    return parser.parse_args(argv)
+
+
+# Parse script arguments before storage/session imports, so a worker never opens
+# the default profile when an explicit data directory was supplied.
+_ENTRY_ARGUMENTS = _parse_arguments() if __name__ == "__main__" else None
+if _ENTRY_ARGUMENTS is not None and _ENTRY_ARGUMENTS.data_dir is not None:
+    _data_dir = _ENTRY_ARGUMENTS.data_dir.expanduser().resolve()
+    _ENTRY_ARGUMENTS.data_dir = _data_dir
+    os.environ["ZFZS_DATA_DIR"] = str(_data_dir)
+    os.environ["DATABASE_URL"] = f"sqlite:///{(_data_dir / 'zfzs.db').as_posix()}"
 os.chdir(PROJECT_ROOT)
 
+from backend.app.core.desktop_runtime import desktop_data_dir, prepare_desktop_storage
 
-from backend.app.core.desktop_runtime import prepare_desktop_storage
-
-DESKTOP_DATA_DIR = prepare_desktop_storage(PROJECT_ROOT)
+DESKTOP_DATA_DIR = (
+    desktop_data_dir() if _ENTRY_ARGUMENTS is not None and _ENTRY_ARGUMENTS.reminder_worker
+    else prepare_desktop_storage(PROJECT_ROOT)
+)
 
 from backend.app.crawlers.bangumi import BangumiClient
 from backend.app.crawlers.xifan_playwright import XifanPlaywrightCrawler
@@ -50,6 +70,8 @@ def _anime_to_dict(item) -> dict[str, Any]:
         "watched_episodes": item.watched_episodes,
         "total_episodes": item.total_episodes,
         "score": item.score,
+        "user_rating": item.user_rating,
+        "tags": item.tags,
         "source_status": item.source_status,
         "year": item.year,
         "broadcast_day": item.broadcast_day,
@@ -124,6 +146,7 @@ class DesktopApp:
         self.reminder_items: dict[int, dict[str, Any]] = {}
         self.search_results: dict[str, Any] = {}
         self.discovery_results: dict[str, Any] = {}
+        self.recommendation_results: dict[str, Any] = {}
         self.busy = False
         self.task_results: queue.Queue = queue.Queue()
 
@@ -141,11 +164,22 @@ class DesktopApp:
         self.watching_count = StringVar(value="0")
         self.finished_count = StringVar(value="0")
         self.reminder_count = StringVar(value="0")
+        self.ai_provider = StringVar(value="auto")
+        self.ai_preference = StringVar()
+        self.ai_api_key = StringVar()
+        self.ai_status = StringVar(value="尚未生成 · AI 结果未经核验，请先用 Bangumi 搜索确认。")
+        self.background_status_text = StringVar(value="后台提醒状态待查询（不会自动启动）")
 
         self._configure_style()
         self._build_ui()
         self.root.after(50, self._poll_tasks)
         self.refresh_data()
+
+    def _available(self) -> bool:
+        if self.busy:
+            self.set_status("已有任务正在执行，请稍候。")
+            return False
+        return True
 
     def _configure_style(self) -> None:
         style = ttk.Style(self.root)
@@ -179,8 +213,9 @@ class DesktopApp:
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text=APP_TITLE, style="Header.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(header, text="本地原生应用 · 数据保存在本机 SQLite", style="Sub.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
-        ttk.Button(header, text="手动添加", command=self.open_manual_dialog).grid(row=0, column=1, rowspan=2, padx=(8, 0))
-        ttk.Button(header, text="刷新", style="Dark.TButton", command=self.refresh_data).grid(row=0, column=2, rowspan=2, padx=(8, 0))
+        ttk.Button(header, text="数据 / 备份", command=self.open_transfer_dialog).grid(row=0, column=1, rowspan=2, padx=(8, 0))
+        ttk.Button(header, text="手动添加", command=self.open_manual_dialog).grid(row=0, column=2, rowspan=2, padx=(8, 0))
+        ttk.Button(header, text="刷新", style="Dark.TButton", command=self.refresh_data).grid(row=0, column=3, rowspan=2, padx=(8, 0))
 
         search = ttk.Frame(shell, style="Card.TFrame", padding=(18, 16))
         search.grid(row=1, column=0, sticky="ew", pady=(20, 14))
@@ -213,15 +248,18 @@ class DesktopApp:
         self.reminder_tab = ttk.Frame(self.notebook, padding=(0, 12, 0, 0))
         self.search_tab = ttk.Frame(self.notebook, padding=(0, 12, 0, 0))
         self.discovery_tab = ttk.Frame(self.notebook, padding=(0, 12, 0, 0))
+        self.ai_tab = ttk.Frame(self.notebook, padding=(0, 12, 0, 0))
         self.notebook.add(self.watch_tab, text="我的追番")
         self.notebook.add(self.reminder_tab, text="今日提醒")
         self.notebook.add(self.search_tab, text="搜索结果")
         self.notebook.add(self.discovery_tab, text="发现番剧")
+        self.notebook.add(self.ai_tab, text="AI 推荐")
 
         self._build_watch_tab()
         self._build_reminder_tab()
         self._build_search_tab()
         self._build_discovery_tab()
+        self._build_ai_tab()
 
         status = ttk.Label(shell, textvariable=self.status_text, style="Sub.TLabel", anchor="w")
         status.grid(row=4, column=0, sticky="ew", pady=(12, 0))
@@ -231,12 +269,16 @@ class DesktopApp:
         frame.pack(fill="both", expand=True)
         tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
         scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
-        tree.configure(yscrollcommand=scrollbar.set)
+        horizontal = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=scrollbar.set, xscrollcommand=horizontal.set)
         for column, heading, width in zip(columns, headings, widths):
             tree.heading(column, text=heading)
             tree.column(column, width=width, minwidth=70, anchor="w", stretch=column == columns[0])
-        tree.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+        tree.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        horizontal.grid(row=1, column=0, sticky="ew")
         tree.bind("<Double-1>", lambda _: self.open_selected_link(tree))
         return tree
 
@@ -250,24 +292,32 @@ class DesktopApp:
 
         self.watch_tree = self._tree(
             self.watch_tab,
-            ("title", "progress", "status", "source", "reminder", "score"),
-            ("番剧", "进度", "状态", "来源更新", "提醒", "评分"),
-            (310, 90, 85, 145, 210, 65),
+            ("title", "progress", "status", "source", "reminder", "score", "user_rating"),
+            ("番剧", "进度", "状态", "来源更新", "提醒", "网站评分", "我的评分"),
+            (220, 80, 75, 120, 190, 80, 80),
         )
         actions = ttk.Frame(self.watch_tab)
-        actions.pack(fill="x", pady=(10, 0))
-        for text, command in (
+        actions.pack(side="bottom", fill="x", pady=(10, 0), before=self.watch_tree.master)
+        for index, (text, command) in enumerate((
             ("−1 集", lambda: self.change_progress(-1)),
             ("+1 集", lambda: self.change_progress(1)),
             ("暂停 / 继续", self.toggle_pause),
             ("标记看完", self.mark_finished),
+            ("我的评分", self.open_rating_dialog),
             ("提醒设置", self.open_reminder_dialog),
             ("打开播放页", lambda: self.open_selected_link(self.watch_tree)),
             ("移除", self.delete_selected),
-        ):
-            ttk.Button(actions, text=text, command=command).pack(side="left", padx=(0, 7))
+        )):
+            ttk.Button(actions, text=text, command=command).grid(row=index // 4, column=index % 4, sticky="ew", padx=(0, 7), pady=(0, 4))
 
     def _build_reminder_tab(self) -> None:
+        controls = ttk.Frame(self.reminder_tab)
+        controls.pack(fill="x", pady=(0, 8))
+        ttk.Button(controls, text="启动后台提醒", command=lambda: self.set_background_reminders(True)).pack(side="left")
+        ttk.Button(controls, text="停止后台提醒", command=lambda: self.set_background_reminders(False)).pack(side="left", padx=6)
+        ttk.Button(controls, text="查询状态", command=self.check_background_reminders).pack(side="left")
+        ttk.Label(controls, textvariable=self.background_status_text, style="Sub.TLabel").pack(side="left", padx=8)
+        ttk.Label(self.reminder_tab, text="默认不启动；不设置开机自启。关闭窗口不会停止已启用的后台提醒。", style="Sub.TLabel").pack(anchor="w", pady=(0, 6))
         self.reminder_tree = self._tree(
             self.reminder_tab,
             ("title", "time", "progress", "status"),
@@ -275,7 +325,7 @@ class DesktopApp:
             (390, 240, 120, 100),
         )
         actions = ttk.Frame(self.reminder_tab)
-        actions.pack(fill="x", pady=(10, 0))
+        actions.pack(side="bottom", fill="x", pady=(10, 0), before=self.reminder_tree.master)
         ttk.Button(actions, text="今天已提醒", style="Accent.TButton", command=self.mark_selected_reminded).pack(side="left")
         ttk.Button(actions, text="打开播放页", command=lambda: self.open_selected_link(self.reminder_tree)).pack(side="left", padx=(8, 0))
 
@@ -290,7 +340,7 @@ class DesktopApp:
         return self._tree(
             parent,
             ("title", "year", "episodes", "status", "score"),
-            ("番剧", "年份", "集数", "更新状态", "评分"),
+            ("番剧", "年份", "集数", "更新状态", "网站评分"),
             (430, 80, 90, 190, 70),
         )
 
@@ -318,6 +368,219 @@ class DesktopApp:
         self.discovery_tree = self._result_tree(self.discovery_tab)
         ttk.Button(actions, text="加入我的追番", style="Accent.TButton", command=lambda: self.import_selected(self.discovery_tree)).pack(side="left")
         ttk.Button(actions, text="打开详情页", command=lambda: self.open_selected_link(self.discovery_tree)).pack(side="left", padx=(8, 0))
+
+    def _build_ai_tab(self) -> None:
+        preferences = ttk.Frame(self.ai_tab)
+        preferences.pack(fill="x", pady=(0, 6))
+        ttk.Label(preferences, text="偏好", style="Sub.TLabel").pack(side="left", padx=(0, 8))
+        ttk.Entry(preferences, textvariable=self.ai_preference).pack(side="left", fill="x", expand=True)
+
+        provider = ttk.Frame(self.ai_tab)
+        provider.pack(fill="x", pady=(0, 6))
+        ttk.Label(provider, text="供应商", style="Sub.TLabel").pack(side="left", padx=(0, 8))
+        ttk.Combobox(provider, textvariable=self.ai_provider, values=("auto", "qwen", "deepseek"), state="readonly", width=10).pack(side="left")
+        ttk.Label(provider, text="API Key（可选，仅本次会话）", style="Sub.TLabel").pack(side="left", padx=10)
+        self.ai_key_entry = ttk.Entry(provider, textvariable=self.ai_api_key, show="*", width=24)
+        self.ai_key_entry.pack(side="left", fill="x", expand=True)
+
+        notice = ttk.Label(
+            self.ai_tab,
+            text="点击生成后，将把已看完番剧的标题、标签、个人评分及偏好发送给所选 AI 供应商（auto 依次尝试通义 / DeepSeek）；可能产生费用。推荐未经核验，须先用 Bangumi 搜索确认。",
+            style="Sub.TLabel", wraplength=780, justify="left",
+        )
+        notice.bind("<Configure>", lambda event: notice.configure(wraplength=max(200, event.width)))
+
+        actions = ttk.Frame(self.ai_tab)
+        actions.pack(side="bottom", fill="x", pady=(8, 0))
+        self.ai_generate_button = ttk.Button(actions, text="生成推荐（可能付费）", style="Accent.TButton", command=self.generate_ai_recommendations)
+        self.ai_generate_button.pack(side="left")
+        self.ai_search_button = ttk.Button(actions, text="用 Bangumi 搜索所选推荐", command=self.search_selected_recommendation)
+        self.ai_search_button.pack(side="left", padx=8)
+        notice.pack(side="bottom", fill="x", pady=(4, 0))
+        self.ai_status_label = ttk.Label(self.ai_tab, textvariable=self.ai_status, style="Sub.TLabel", wraplength=780)
+        self.ai_status_label.pack(side="bottom", fill="x", pady=(4, 0))
+        self.ai_status_label.bind("<Configure>", lambda event: self.ai_status_label.configure(wraplength=max(200, event.width)))
+        self.ai_tree = self._tree(self.ai_tab, ("title", "reason"), ("推荐名称（未核验）", "推荐理由"), (240, 560))
+        self.ai_tree.bind("<Double-1>", lambda _: self.search_selected_recommendation())
+        self.ai_tree.bind("<<TreeviewSelect>>", self._show_recommendation_reason)
+
+    def _show_recommendation_reason(self, _event=None) -> None:
+        selection = self.ai_tree.selection()
+        if selection:
+            item = self.recommendation_results.get(selection[0])
+            if item:
+                detail = f"{item.title}：{item.reason}"
+                self.ai_status.set(detail[:180] + ("…（完整理由见列表）" if len(detail) > 180 else ""))
+
+    def generate_ai_recommendations(self) -> None:
+        if not self._available():
+            return
+        # Tk values must be snapshotted on the UI thread before starting work.
+        preference = self.ai_preference.get().strip()
+        provider = self.ai_provider.get()
+        api_key = self.ai_api_key.get().strip() or None
+        if provider not in ("auto", "qwen", "deepseek"):
+            messagebox.showinfo("供应商有误", "请选择 auto、qwen 或 deepseek。", parent=self.root)
+            return
+
+        def work():
+            from backend.app.service.recommendation_service import RecommendationError, generate_recommendations
+
+            try:
+                with SessionLocal() as db:
+                    return generate_recommendations(db, preference=preference, provider=provider, api_key=api_key)
+            except RecommendationError as exc:
+                detail = str(exc)
+                if api_key:
+                    detail = detail.replace(api_key, "[已隐藏 API Key]")
+                raise RuntimeError(detail) from None
+            except Exception:
+                # Unexpected provider exceptions may contain credentials/headers.
+                raise RuntimeError("AI 推荐失败，请检查供应商、API Key 或网络后重试。") from None
+
+        def done(results):
+            self.recommendation_results.clear()
+            self.ai_tree.delete(*self.ai_tree.get_children())
+            for index, item in enumerate(results):
+                iid = f"recommendation-{index}"
+                self.recommendation_results[iid] = item
+                self.ai_tree.insert("", "end", iid=iid, values=(item.title, item.reason))
+            self.ai_status.set(f"生成 {len(results)} 条未核验推荐；请选择一条用 Bangumi 搜索确认。")
+            self.set_status("AI 推荐已生成（未经核验，未加入追番）。")
+
+        def failed(_):
+            self.ai_status.set("推荐生成失败，可以重试；此前结果已保留。")
+
+        if self._run_task("正在请求 AI 推荐（可能产生费用）…", work, done, failed):
+            self.ai_status.set("正在生成推荐…（完成前保留此前结果）")
+
+    def search_selected_recommendation(self) -> None:
+        if not self._available():
+            return
+        selection = self.ai_tree.selection()
+        item = self.recommendation_results.get(selection[0]) if selection else None
+        if item is None:
+            messagebox.showinfo("请选择推荐", "请先选择一条 AI 推荐。", parent=self.root)
+            return
+        self.keyword.set(item.search_keyword or item.title)
+        self.search_source.set("Bangumi（推荐）")
+        self.search_xifan()
+
+    def open_transfer_dialog(self) -> None:
+        dialog = Toplevel(self.root)
+        dialog.title("数据导入 / 导出 / 备份")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+        frame = ttk.Frame(dialog, padding=22)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="JSON 文件可迁移到其他设备；导入前自动备份当前数据。", wraplength=480).pack(anchor="w", pady=(0, 10))
+        replace_existing = BooleanVar(value=False)
+        ttk.Checkbutton(frame, text="覆盖冲突记录（默认不勾选，保留本地记录）", variable=replace_existing).pack(anchor="w")
+        ttk.Label(frame, text=f"默认备份目录：{DESKTOP_DATA_DIR / 'backups'}", wraplength=480).pack(anchor="w", pady=10)
+        actions = ttk.Frame(frame)
+        actions.pack(fill="x")
+        ttk.Button(actions, text="导出 JSON…", command=self.export_data).pack(side="left")
+        ttk.Button(actions, text="导入 JSON…", command=lambda: self.import_data(replace_existing.get())).pack(side="left", padx=8)
+        ttk.Button(actions, text="立即备份", command=self.backup_data).pack(side="left")
+        ttk.Button(frame, text="关闭", command=dialog.destroy).pack(anchor="e", pady=(16, 0))
+        dialog.bind("<Escape>", lambda _: dialog.destroy())
+
+    def export_data(self) -> None:
+        if not self._available():
+            return
+        path = filedialog.asksaveasfilename(parent=self.root, title="导出追番数据", defaultextension=".json", initialfile="zfzs-export.json", filetypes=(("JSON 数据", "*.json"),))
+        if not path:
+            return
+
+        def work():
+            from backend.app.service.transfer_service import save_export
+
+            with SessionLocal() as db:
+                return save_export(db, path)
+
+        def done(count):
+            detail = f"已导出 {count} 条记录。\n路径：{path}"
+            self.set_status(detail.replace("\n", " "))
+            messagebox.showinfo("导出完成", detail, parent=self.root)
+
+        self._run_task("正在导出数据…", work, done)
+
+    def backup_data(self) -> None:
+        backup_dir = DESKTOP_DATA_DIR / "backups"
+
+        def work():
+            from backend.app.service.transfer_service import create_backup
+
+            with SessionLocal() as db:
+                return create_backup(db, backup_dir)
+
+        def done(path):
+            self.set_status(f"备份完成：{path}")
+            messagebox.showinfo("备份完成", f"备份路径：{path}", parent=self.root)
+
+        self._run_task("正在备份数据…", work, done)
+
+    def import_data(self, replace_existing: bool = False) -> None:
+        if not self._available():
+            return
+        path = filedialog.askopenfilename(parent=self.root, title="导入追番数据", filetypes=(("JSON 数据", "*.json"),))
+        if not path:
+            return
+        if replace_existing and not messagebox.askyesno("确认覆盖冲突记录", "将以导入文件覆盖冲突记录，包括观看进度、个人评分及提醒设置。\n导入前会自动备份。是否继续？", parent=self.root, default="no"):
+            return
+        conflict = "replace_existing" if replace_existing else "keep_local"
+        backup_dir = DESKTOP_DATA_DIR / "backups"
+
+        def work():
+            from backend.app.service.transfer_service import load_import
+
+            with SessionLocal() as db:
+                return load_import(db, path, conflict=conflict, backup_dir=backup_dir)
+
+        def done(summary):
+            detail = f"新增 {summary.created} 条 / 更新 {summary.updated} 条 / 跳过 {summary.skipped} 条\n备份路径：{summary.backup_path or '无'}"
+            self.refresh_data(f"导入完成：{detail.replace(chr(10), ' ')}")
+            messagebox.showinfo("导入完成", detail, parent=self.root)
+
+        self._run_task("正在导入数据（先备份本地记录）…", work, done)
+
+    def check_background_reminders(self) -> None:
+        data_dir = DESKTOP_DATA_DIR
+
+        def work():
+            from backend.app.service.notification_service import background_status
+
+            return background_status(data_dir)
+
+        def done(running):
+            self.background_status_text.set("后台提醒：运行中" if running else "后台提醒：已停止")
+            self.set_status("后台提醒状态已更新。")
+
+        self._run_task("正在查询后台提醒…", work, done)
+
+    def set_background_reminders(self, enabled: bool) -> None:
+        data_dir = DESKTOP_DATA_DIR
+
+        def work():
+            from backend.app.service.notification_service import background_status, start_background_worker, stop_background_worker
+
+            operation = start_background_worker if enabled else stop_background_worker
+            accepted = operation(data_dir)
+            return accepted, background_status(data_dir)
+
+        def done(result):
+            accepted, running = result
+            self.background_status_text.set("后台提醒：运行中" if running else "后台提醒：已停止")
+            if not accepted or (enabled and not running):
+                messagebox.showerror("后台提醒", "状态与请求不符，请稍后查询状态或重试。", parent=self.root)
+            elif not enabled and running:
+                self.background_status_text.set("后台提醒：正在停止，请稍后查询")
+                self.set_status("停止请求已发送；当前通知完成后退出，请稍后查询状态。")
+                return
+            self.set_status("后台提醒：运行中（关闭窗口后继续）" if running else "后台提醒已停止。")
+
+        self._run_task("正在启动后台提醒…" if enabled else "正在停止后台提醒…", work, done)
 
     def set_status(self, text: str) -> None:
         self.status_text.set(text)
@@ -399,6 +662,7 @@ class DesktopApp:
             self.watch_tree.insert("", "end", iid=str(item["id"]), values=(
                 item["title"], _progress_text(item), STATUS_LABELS.get(item["status"], item["status"]),
                 item["source_status"] or "—", _reminder_text(item), item["score"] if item["score"] is not None else "—",
+                item["user_rating"] if item["user_rating"] is not None else "—",
             ))
 
     def render_reminders(self) -> None:
@@ -559,6 +823,54 @@ class DesktopApp:
     def mark_finished(self) -> None:
         self._mutate_selected("正在标记为已看完…", lambda db, anime: anime_service.update_anime(db, anime, AnimeUpdate(status="finished")))
 
+    def save_user_rating(self, item_id: int, value: str) -> bool:
+        if not self._available():
+            return False
+        try:
+            payload = AnimeUpdate(user_rating=float(value) if value.strip() else None)
+        except (ValueError, ValidationError):
+            messagebox.showinfo("评分有误", "我的评分须为 0–10 的有限数字；留空表示清除。网站评分不会改变。", parent=self.root)
+            return False
+
+        def work():
+            with SessionLocal() as db:
+                anime = anime_service.get_anime(db, item_id)
+                if anime is None:
+                    raise RuntimeError("番剧不存在，可能已被删除。")
+                anime_service.update_anime(db, anime, payload)
+
+        return self._run_task("正在保存我的评分…", work, lambda _: self.refresh_data("我的评分已保存（网站评分不变）。"))
+
+    def open_rating_dialog(self) -> None:
+        item = self._selected_item()
+        if not item:
+            return
+        dialog = Toplevel(self.root)
+        dialog.title("我的评分")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+        frame = ttk.Frame(dialog, padding=22)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text=item["title"], wraplength=400).pack(anchor="w", pady=(0, 8))
+        ttk.Label(frame, text=f"网站评分：{item['score'] if item['score'] is not None else '—'}（不受此设置影响）").pack(anchor="w")
+        ttk.Label(frame, text="我的评分（0–10，留空清除；用于 AI 推荐）").pack(anchor="w", pady=(8, 4))
+        rating = StringVar(value="" if item["user_rating"] is None else str(item["user_rating"]))
+        entry = ttk.Entry(frame, textvariable=rating, width=30)
+        entry.pack(fill="x")
+
+        def save(value):
+            if self.save_user_rating(item["id"], value):
+                dialog.destroy()
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill="x", pady=(16, 0))
+        ttk.Button(buttons, text="清除评分", command=lambda: save("")).pack(side="left")
+        ttk.Button(buttons, text="保存", style="Accent.TButton", command=lambda: save(rating.get())).pack(side="right")
+        ttk.Button(buttons, text="取消", command=dialog.destroy).pack(side="right", padx=8)
+        dialog.bind("<Escape>", lambda _: dialog.destroy())
+        entry.focus_set()
+
     def delete_selected(self) -> None:
         item = self._selected_item()
         if not item or not messagebox.askyesno("确认移除", f"确定从追番列表移除“{item['title']}”吗？", parent=self.root):
@@ -700,6 +1012,12 @@ class DesktopApp:
 
 
 def main() -> None:
+    args = _ENTRY_ARGUMENTS or _parse_arguments()
+    if args.reminder_worker:
+        from backend.app.service.notification_service import run_worker
+
+        run_worker(args.data_dir.expanduser().resolve() if args.data_dir is not None else DESKTOP_DATA_DIR)
+        return
     if not _claim_single_instance():
         return
     try:

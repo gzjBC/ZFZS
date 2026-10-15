@@ -117,6 +117,25 @@ npm run build      # 生产构建
 - 覆盖：缓存、参数校验、Bangumi 解析、DB 仓库（真实 PostgreSQL 测试库）、AI 客户端与推荐编排、推荐 API、UI 纯逻辑
 - 运行测试需要本地数据库（`docker compose up -d` 后 `npm run db:init` 会顺带建好测试库）
 
+若本机 5432 已有其他项目的数据库，使用专用的一次性测试容器：
+
+```bash
+# 需要 Docker Engine、Python 3 和 Node.js 24；镜像需提前安装。
+python scripts/test_isolated_db.py --image postgres:17-alpine
+```
+
+脚本仅绑定随机回环端口、不挂载已有数据卷，跑完 lint / typecheck / 全套测试后移除自己的容器。默认镜像是 `postgres:16-alpine`，也可显式选择已安装的 `postgres:17-alpine`。直接运行数据库测试时可用 `TEST_DATABASE_URL` 指向独立端口，数据库名必须是 `anime_tracker_test` 且主机为本机；不要使用含正式数据的库。
+
+### 将 Web 追番数据迁入原生桌面端
+
+从 `web/` 执行（数据库只读，目标文件必须尚不存在）：
+
+```bash
+node --env-file=.env.local scripts/export-desktop.mjs "$HOME/Downloads/zfzs-web-export.json"
+```
+
+也可通过系统 `DATABASE_URL` 配置连接后省略 `--env-file`。导出完成后，在桌面端“数据管理”中导入该 JSON。Web 的评分迁为个人评分，`completed` 迁为已看完，`wish/hold` 迁为暂停；提醒默认关闭。真实进度超出旧总集数时保留进度并把总集数标为未知。文件只含追番白名单字段，不导出 API Key 或连接配置；本轮已验证 Node 转换器与 Python 导入器的实际互通和重复导入。
+
 ---
 
 ## 常见问题

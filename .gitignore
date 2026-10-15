@@ -6,6 +6,11 @@
 .venv.backup-*/
 .env
 .env.local
+.env.*
+!.env.example
+backups/
+exports/
+*.bundle
 node_modules/
 __pycache__/
 *.py[cod]

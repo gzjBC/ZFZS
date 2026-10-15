@@ -12,7 +12,15 @@ import {
 } from "@/lib/db/tracking-repo";
 import type { TrackingInput } from "@/lib/db/tracking-repo";
 
-const TEST_DATABASE_URL = "postgres://anime:anime@localhost:5432/anime_tracker_test";
+const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? "postgres://anime:anime@localhost:5432/anime_tracker_test";
+const testDatabase = new URL(TEST_DATABASE_URL);
+if (
+  !["postgres:", "postgresql:"].includes(testDatabase.protocol) ||
+  !["localhost", "127.0.0.1", "[::1]"].includes(testDatabase.hostname) ||
+  testDatabase.pathname !== "/anime_tracker_test"
+) {
+  throw new Error("Database tests require a local dedicated anime_tracker_test database.");
+}
 
 const sample: TrackingInput = {
   bangumi_subject_id: 456080,

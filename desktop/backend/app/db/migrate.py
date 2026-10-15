@@ -7,6 +7,7 @@ SQLITE_ANIME_COLUMNS = {
     "source_url": "TEXT",
     "source_status": "VARCHAR(64)",
     "year": "INTEGER",
+    "user_rating": "FLOAT",
 }
 
 

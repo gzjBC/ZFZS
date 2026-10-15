@@ -31,6 +31,7 @@ class Anime(Base):
     source_status: Mapped[str | None] = mapped_column(String(64), default=None)
     year: Mapped[int | None] = mapped_column(Integer, default=None)
     score: Mapped[float | None] = mapped_column(Float, default=None)
+    user_rating: Mapped[float | None] = mapped_column(Float, default=None)
     tags: Mapped[str | None] = mapped_column(Text, default=None)
 
     last_reminded_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)

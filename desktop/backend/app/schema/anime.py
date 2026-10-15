@@ -22,6 +22,7 @@ class AnimeBase(BaseModel):
     source_status: str | None = None
     year: int | None = Field(default=None, ge=1900, le=2200)
     score: float | None = Field(default=None, ge=0, le=10)
+    user_rating: float | None = Field(default=None, ge=0, le=10, allow_inf_nan=False)
     tags: str | None = None
 
 
@@ -48,6 +49,7 @@ class AnimeUpdate(BaseModel):
     source_status: str | None = None
     year: int | None = Field(default=None, ge=1900, le=2200)
     score: float | None = Field(default=None, ge=0, le=10)
+    user_rating: float | None = Field(default=None, ge=0, le=10, allow_inf_nan=False)
     tags: str | None = None
 
 

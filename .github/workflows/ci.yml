@@ -75,6 +75,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgres://anime:anime@localhost:5432/anime_tracker
+      TEST_DATABASE_URL: postgres://anime:anime@localhost:5432/anime_tracker_test
       BANGUMI_USER_AGENT: ZFZS-CI/0.2 (https://github.com/gzjBC/ZFZS)
     steps:
       - uses: actions/checkout@v4
