@@ -432,7 +432,8 @@ class TransferTests(unittest.TestCase):
             db.add(Anime(title="原有", watched_episodes=4))
             db.commit()
             summary = transfer.load_import(db, self.input)
-            self.assertEqual(summary.backup_path.parent, folder.resolve() / "backups")
+            # Compare filesystem identity, including Windows 8.3 and macOS symlink aliases.
+            self.assertTrue(summary.backup_path.parent.samefile(folder / "backups"))
             self.assertTrue(summary.backup_path.is_file())
             items = json.loads(summary.backup_path.read_text(encoding="utf-8"))["items"]
             self.assertEqual([item["title"] for item in items], ["原有"])
