@@ -128,7 +128,7 @@ Mac 人工验收清单（本轮 Windows 工作区不能替代）：
 - 分别记录本机包与下载 artifact 的系统安全提示，不绕过 Gatekeeper；没有签名／公证不是已完成外部分发验收。
 - 如需支持另一 CPU 架构或更旧 macOS，必须在目标组合单独构建／运行验证，不能从单台 CI runner 推断兼容。
 
-当前仅完成 Windows 上的无 UI 验证和脚本静态审查；没有声称 macOS 构建、启动或 GitHub Actions 实跑成功。
+当前已在 Windows 完成单元测试、真实 Tk 窗口烟测、独立程序构建启动，以及源码/打包后台进程启停验证；macOS 脚本仅做静态审查，没有声称 macOS 构建、启动或 GitHub Actions 实跑成功。
 
 ## 本轮新增功能的 Mac 验收
 
