@@ -59,7 +59,7 @@ tests/                  # 按模块组织，DB 层连真实测试库
 
 | 依赖 | 版本 | 说明 |
 |---|---|---|
-| Node.js | ≥ 18（开发用 24） | `node -v` 查看 |
+| Node.js | 24.x（开发与 CI 使用 24） | `node -v` 查看；旧版 Node 18 不满足当前依赖 |
 | Docker Desktop | 任意较新版本 | 跑 PostgreSQL 容器 |
 | 梯子（可选） | — | 访问 Bangumi 数据与条目页需要；AI 推荐不需要 |
 | AI API Key（可选） | — | 不用 AI 推荐可跳过 |

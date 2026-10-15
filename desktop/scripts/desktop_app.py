@@ -6,6 +6,7 @@ import queue
 import sys
 import threading
 import webbrowser
+from datetime import date
 from pathlib import Path
 from tkinter import BooleanVar, IntVar, StringVar, Tk, Toplevel, TclError, messagebox
 from tkinter import ttk
@@ -35,6 +36,8 @@ from backend.app.service import anime_service, reminder_service
 APP_TITLE = "ZFZS 追番助手"
 STATUS_LABELS = {"watching": "正在追", "paused": "暂停", "finished": "已看完"}
 DAY_LABELS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+SEASON_MONTHS = {"1 月（冬季）": 1, "4 月（春季）": 4, "7 月（夏季）": 7, "10 月（秋季）": 10}
+DISCOVERY_LIMIT = 50
 MUTEX_NAME = "Local\\ZFZS_Anime_Assistant_Desktop"
 _MUTEX_HANDLE = None
 
@@ -114,17 +117,25 @@ class DesktopApp:
         self.root = root
         self.root.title(APP_TITLE)
         self.root.geometry("1120x760")
-        self.root.minsize(900, 620)
+        self.root.minsize(900, 700)
         self.root.configure(bg="#f2f0eb")
 
         self.items: dict[int, dict[str, Any]] = {}
         self.reminder_items: dict[int, dict[str, Any]] = {}
         self.search_results: dict[str, Any] = {}
+        self.discovery_results: dict[str, Any] = {}
         self.busy = False
         self.task_results: queue.Queue = queue.Queue()
 
         self.keyword = StringVar()
         self.search_source = StringVar(value="Bangumi（推荐）")
+        today = date.today()
+        self.calendar_date = StringVar(value=today.isoformat())
+        self.season_year = StringVar(value=str(today.year))
+        quarter_month = ((today.month - 1) // 3) * 3 + 1
+        self.season_month = StringVar(value=next(label for label, month in SEASON_MONTHS.items() if month == quarter_month))
+        self.discovery_status = StringVar(value="选择日期或季度后加载 · 来源：Bangumi · 每次最多 50 条")
+        self.discovery_result_context = "尚未加载"
         self.filter_status = StringVar(value="全部")
         self.status_text = StringVar(value="正在载入本地数据…")
         self.watching_count = StringVar(value="0")
@@ -201,13 +212,16 @@ class DesktopApp:
         self.watch_tab = ttk.Frame(self.notebook, padding=(0, 12, 0, 0))
         self.reminder_tab = ttk.Frame(self.notebook, padding=(0, 12, 0, 0))
         self.search_tab = ttk.Frame(self.notebook, padding=(0, 12, 0, 0))
+        self.discovery_tab = ttk.Frame(self.notebook, padding=(0, 12, 0, 0))
         self.notebook.add(self.watch_tab, text="我的追番")
         self.notebook.add(self.reminder_tab, text="今日提醒")
         self.notebook.add(self.search_tab, text="搜索结果")
+        self.notebook.add(self.discovery_tab, text="发现番剧")
 
         self._build_watch_tab()
         self._build_reminder_tab()
         self._build_search_tab()
+        self._build_discovery_tab()
 
         status = ttk.Label(shell, textvariable=self.status_text, style="Sub.TLabel", anchor="w")
         status.grid(row=4, column=0, sticky="ew", pady=(12, 0))
@@ -266,24 +280,58 @@ class DesktopApp:
         ttk.Button(actions, text="打开播放页", command=lambda: self.open_selected_link(self.reminder_tree)).pack(side="left", padx=(8, 0))
 
     def _build_search_tab(self) -> None:
-        self.search_tree = self._tree(
-            self.search_tab,
+        actions = ttk.Frame(self.search_tab)
+        actions.pack(side="bottom", fill="x", pady=(10, 0))
+        self.search_tree = self._result_tree(self.search_tab)
+        ttk.Button(actions, text="加入追番", style="Accent.TButton", command=self.import_selected).pack(side="left")
+        ttk.Button(actions, text="打开详情页", command=lambda: self.open_selected_link(self.search_tree)).pack(side="left", padx=(8, 0))
+
+    def _result_tree(self, parent):
+        return self._tree(
+            parent,
             ("title", "year", "episodes", "status", "score"),
             ("番剧", "年份", "集数", "更新状态", "评分"),
             (430, 80, 90, 190, 70),
         )
-        actions = ttk.Frame(self.search_tab)
-        actions.pack(fill="x", pady=(10, 0))
-        ttk.Button(actions, text="加入追番", style="Accent.TButton", command=self.import_selected).pack(side="left")
-        ttk.Button(actions, text="打开详情页", command=lambda: self.open_selected_link(self.search_tree)).pack(side="left", padx=(8, 0))
+
+    def _build_discovery_tab(self) -> None:
+        calendar = ttk.Frame(self.discovery_tab)
+        calendar.pack(fill="x", pady=(0, 6))
+        ttk.Label(calendar, text="放送日历", style="Sub.TLabel").pack(side="left", padx=(0, 12))
+        ttk.Entry(calendar, textvariable=self.calendar_date, width=13).pack(side="left")
+        ttk.Label(calendar, text="YYYY-MM-DD", style="Sub.TLabel").pack(side="left", padx=8)
+        ttk.Button(calendar, text="加载该日", command=self.load_calendar).pack(side="left")
+        ttk.Button(calendar, text="整周", command=lambda: self.load_calendar(whole_week=True)).pack(side="left", padx=6)
+        ttk.Label(calendar, text="按星期查询当前放送表，非历史排期", style="Sub.TLabel").pack(side="left")
+
+        season = ttk.Frame(self.discovery_tab)
+        season.pack(fill="x", pady=(0, 6))
+        ttk.Label(season, text="季度新番", style="Sub.TLabel").pack(side="left", padx=(0, 12))
+        ttk.Spinbox(season, textvariable=self.season_year, from_=1900, to=9999, width=6).pack(side="left")
+        ttk.Label(season, text="年", style="Sub.TLabel").pack(side="left", padx=6)
+        ttk.Combobox(season, textvariable=self.season_month, state="readonly", values=tuple(SEASON_MONTHS), width=14).pack(side="left")
+        ttk.Button(season, text="加载季度", command=self.load_season).pack(side="left", padx=8)
+        ttk.Label(self.discovery_tab, textvariable=self.discovery_status, style="Sub.TLabel", wraplength=800).pack(fill="x", pady=(0, 8))
+
+        actions = ttk.Frame(self.discovery_tab)
+        actions.pack(side="bottom", fill="x", pady=(10, 0))
+        self.discovery_tree = self._result_tree(self.discovery_tab)
+        ttk.Button(actions, text="加入我的追番", style="Accent.TButton", command=lambda: self.import_selected(self.discovery_tree)).pack(side="left")
+        ttk.Button(actions, text="打开详情页", command=lambda: self.open_selected_link(self.discovery_tree)).pack(side="left", padx=(8, 0))
 
     def set_status(self, text: str) -> None:
         self.status_text.set(text)
 
-    def _run_task(self, label: str, work: Callable[[], Any], done: Callable[[Any], None] | None = None) -> None:
+    def _run_task(
+        self,
+        label: str,
+        work: Callable[[], Any],
+        done: Callable[[Any], None] | None = None,
+        failed: Callable[[Exception], None] | None = None,
+    ) -> bool:
         if self.busy:
             self.set_status("已有任务正在执行，请稍候。")
-            return
+            return False
         self.busy = True
         self.set_status(label)
 
@@ -291,11 +339,12 @@ class DesktopApp:
             try:
                 result = work()
             except Exception as exc:
-                self.task_results.put((False, exc, None))
+                self.task_results.put((False, exc, failed))
             else:
                 self.task_results.put((True, result, done))
 
         threading.Thread(target=runner, daemon=True).start()
+        return True
 
     def _poll_tasks(self) -> None:
         try:
@@ -306,6 +355,8 @@ class DesktopApp:
             if succeeded:
                 self._task_done(result, done)
             else:
+                if done:
+                    done(result)
                 self._task_failed(result)
         self.root.after(50, self._poll_tasks)
 
@@ -364,15 +415,7 @@ class DesktopApp:
             return
 
         def done(results):
-            self.search_results.clear()
-            self.search_tree.delete(*self.search_tree.get_children())
-            for index, item in enumerate(results):
-                iid = f"result-{index}"
-                self.search_results[iid] = item
-                self.search_tree.insert("", "end", iid=iid, values=(
-                    item.title, item.year or "—", item.total_episodes or "—", item.status_text or "—",
-                    item.score if item.score is not None else "—",
-                ))
+            self._render_results(self.search_tree, self.search_results, results)
             self.notebook.select(self.search_tab)
             self.set_status(f"搜索完成：找到 {len(results)} 条结果。")
 
@@ -385,6 +428,70 @@ class DesktopApp:
             work = lambda: XifanPlaywrightCrawler().search(keyword, limit=8)
         self._run_task(label, work, done)
 
+    def _render_results(self, tree, target: dict[str, Any], results) -> None:
+        target.clear()
+        tree.delete(*tree.get_children())
+        for index, item in enumerate(results):
+            iid = f"result-{index}"
+            target[iid] = item
+            tree.insert("", "end", iid=iid, values=(
+                item.title, item.year or "—", item.total_episodes or "—", item.status_text or "—",
+                item.score if item.score is not None else "—",
+            ))
+
+    def load_calendar(self, whole_week: bool = False) -> None:
+        if whole_week:
+            weekday = None
+            context = "放送日历 · 整周"
+        else:
+            try:
+                selected_date = date.fromisoformat(self.calendar_date.get().strip())
+            except ValueError:
+                messagebox.showinfo("日期有误", "请输入有效日期，格式为 YYYY-MM-DD，例如 2026-10-15。", parent=self.root)
+                return
+            weekday = (selected_date.weekday() + 1) % 7
+            context = f"放送日历 · {selected_date.isoformat()}（{DAY_LABELS[weekday]}）"
+
+        def work():
+            from backend.app.crawlers.bangumi_discovery import BangumiDiscoveryClient
+
+            return BangumiDiscoveryClient().calendar(weekday=weekday, limit=DISCOVERY_LIMIT)
+
+        self._load_discovery(context, work)
+
+    def load_season(self) -> None:
+        try:
+            year = int(self.season_year.get().strip())
+            month = SEASON_MONTHS[self.season_month.get()]
+            if not 1900 <= year <= 9999:
+                raise ValueError
+        except (ValueError, KeyError):
+            messagebox.showinfo("季度有误", "请输入 1900–9999 之间的年份，并选择 1、4、7 或 10 月季度。", parent=self.root)
+            return
+        context = f"季度新番 · {year} 年 {month} 月"
+
+        def work():
+            from backend.app.crawlers.bangumi_discovery import BangumiDiscoveryClient
+
+            return BangumiDiscoveryClient().season(year=year, month=month, limit=DISCOVERY_LIMIT)
+
+        self._load_discovery(context, work)
+
+    def _load_discovery(self, context: str, work: Callable[[], Any]) -> None:
+        def done(result):
+            self._render_results(self.discovery_tree, self.discovery_results, result)
+            self.discovery_result_context = context
+            detail = f"{len(result)} 条结果（最多 {DISCOVERY_LIMIT} 条）" if result else "暂无条目，请尝试其他日期或季度。"
+            self.discovery_status.set(f"{context} · {detail}")
+            self.set_status(f"{context} 加载完成 · {detail}")
+
+        def failed(_):
+            self.discovery_status.set(f"{context} 加载失败，可重试。此前列表：{self.discovery_result_context}（{len(self.discovery_results)} 条）")
+
+        if self._run_task(f"正在加载 {context}…", work, done, failed):
+            self.discovery_status.set(f"正在加载 {context}…（完成前保留此前结果）")
+            self.notebook.select(self.discovery_tab)
+
     def _selected_item(self, tree=None) -> dict[str, Any] | None:
         tree = tree or self.watch_tree
         selection = tree.selection()
@@ -394,19 +501,26 @@ class DesktopApp:
         item_id = int(selection[0])
         return self.reminder_items.get(item_id) if tree is self.reminder_tree else self.items.get(item_id)
 
-    def import_selected(self) -> None:
-        selection = self.search_tree.selection()
+    def import_selected(self, tree=None) -> None:
+        tree = tree if tree is not None else self.search_tree
+        results = self.discovery_results if tree is self.discovery_tree else self.search_results
+        selection = tree.selection()
         if not selection:
-            messagebox.showinfo("请选择结果", "请先选择一条搜索结果。", parent=self.root)
+            messagebox.showinfo("请选择结果", "请先选择一条番剧结果。", parent=self.root)
             return
-        result = self.search_results[selection[0]]
+        result = results[selection[0]]
 
         def work():
             with SessionLocal() as db:
                 anime_service.import_search_result(db, result)
             return result.title
 
-        self._run_task(f"正在加入：{result.title}", work, lambda title: self.refresh_data(f"已加入追番：{title}"))
+        def done(title):
+            self.filter_status.set("全部")
+            self.notebook.select(self.watch_tab)
+            self.refresh_data(f"已加入追番：{title}（已有条目保留观看进度）")
+
+        self._run_task(f"正在加入：{result.title}", work, done)
 
     def _mutate_selected(self, label: str, mutate: Callable[[Any, Any], None]) -> None:
         item = self._selected_item()
@@ -464,12 +578,13 @@ class DesktopApp:
         self._run_task("正在确认提醒…", work, lambda _: self.refresh_data("今日提醒已确认。"))
 
     def open_selected_link(self, tree) -> None:
-        if tree is self.search_tree:
+        if tree is self.search_tree or tree is self.discovery_tree:
             selection = tree.selection()
             if not selection:
-                messagebox.showinfo("请选择结果", "请先选择一条搜索结果。", parent=self.root)
+                messagebox.showinfo("请选择结果", "请先选择一条番剧结果。", parent=self.root)
                 return
-            item = self.search_results[selection[0]]
+            results = self.discovery_results if tree is self.discovery_tree else self.search_results
+            item = results[selection[0]]
             url = item.play_url or item.source_url
         else:
             item = self._selected_item(tree)

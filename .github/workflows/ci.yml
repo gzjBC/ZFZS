@@ -24,9 +24,34 @@ jobs:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: desktop/requirements.txt
-      - run: python -m pip install -r requirements.txt
-      - run: python -m unittest discover -s tests -v
-      - run: python -m py_compile scripts/desktop_app.py backend/app/crawlers/bangumi.py
+      - name: Prepare canonical desktop environment (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\scripts\run_desktop.ps1 -PrepareOnly
+      - name: Parse PowerShell scripts and test without installing (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-ChildItem scripts/*.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count) { throw ($errors | Out-String) }
+          }
+          .\scripts\test.ps1 -NoInstall
+          .\start.bat -PrepareOnly -NoInstall
+          if ($LASTEXITCODE -ne 0) { throw 'Batch launcher verification failed.' }
+      - name: Prepare and test canonical desktop environment (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          bash -n scripts/run_desktop.sh scripts/build_desktop.sh
+          bash scripts/run_desktop.sh --prepare-only
+          python_path="$(bash scripts/run_desktop.sh --print-python --no-install)"
+          DATABASE_URL='sqlite:///:memory:' "$python_path" -B -m unittest discover -s tests -v
+      - name: Check Python syntax without importing the app or writing bytecode
+        run: python -B -c "import ast, pathlib; files = [*pathlib.Path('scripts').glob('*.py'), *pathlib.Path('backend').rglob('*.py')]; [ast.parse(p.read_text(encoding='utf-8'), filename=str(p)) for p in files]; print(f'Parsed {len(files)} Python files')"
 
   web:
     name: Web

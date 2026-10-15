@@ -18,18 +18,58 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: python -m pip install -r requirements-dev.txt
-      - run: python -m unittest discover -s tests -v
-      - if: runner.os == 'Windows'
-        run: .\scripts\build_desktop.ps1
-      - if: runner.os == 'macOS'
-        run: bash scripts/build_desktop.sh
-      - if: runner.os == 'macOS'
-        run: ditto -c -k --sequesterRsrc --keepParent "dist/ZFZS Anime Tracker.app" "dist/ZFZS-macOS.zip"
+          cache: pip
+          cache-dependency-path: |
+            desktop/requirements.txt
+            desktop/requirements-dev.txt
+      - name: Prepare, test and build Windows bundle
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\run_desktop.ps1 -PrepareOnly -BuildDependencies
+          .\scripts\test.ps1 -NoInstall
+          .\scripts\build_desktop.ps1 -NoInstall
+          Compress-Archive -LiteralPath 'dist/ZFZS-Anime-Tracker' -DestinationPath 'dist/ZFZS-Windows.zip' -Force
+          if ((Get-Item 'dist/ZFZS-Windows.zip').Length -eq 0) { throw 'Empty Windows archive.' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [IO.Compression.ZipFile]::OpenRead((Join-Path $PWD 'dist/ZFZS-Windows.zip'))
+          try {
+            foreach ($name in @('ZFZS-Anime-Tracker/ZFZS-Anime-Tracker.exe', 'ZFZS-Anime-Tracker/_internal/_tkinter.pyd')) {
+              if (-not $archive.GetEntry($name)) { throw "Archive is missing $name" }
+            }
+          } finally { $archive.Dispose() }
+      - name: Prepare, test and build macOS bundle and archive
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          bash scripts/run_desktop.sh --prepare-only --build-dependencies
+          python_path="$(bash scripts/run_desktop.sh --print-python --no-install)"
+          DATABASE_URL='sqlite:///:memory:' "$python_path" -B -m unittest discover -s tests -v
+          bash scripts/build_desktop.sh --no-install
+          # Verify the archive after a round trip, including symlinks and execute bits.
+          unpack="$(mktemp -d "${RUNNER_TEMP}/ZFZS archive.XXXXXX")"
+          ditto -x -k dist/ZFZS-macOS.zip "$unpack"
+          test -x "$unpack/ZFZS Anime Tracker.app/Contents/MacOS/ZFZS Anime Tracker"
+          "$python_path" -I -B - "$unpack/ZFZS Anime Tracker.app" <<'PY'
+          import pathlib, sys
+          from PyInstaller.utils.hooks.tcl_tk import tcltk_info
+          root = pathlib.Path(sys.argv[1])
+          broken = [str(p) for p in root.rglob('*') if p.is_symlink() and not p.exists()]
+          assert not broken, broken
+          assert any(p.is_file() for p in root.rglob('_tkinter*.so'))
+          missing = [name for name, _, _ in tcltk_info.data_files if not (root / 'Contents/Resources' / name).is_file()]
+          assert not missing, missing
+          PY
       - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
         with:
-          name: ZFZS-${{ runner.os }}-${{ runner.arch }}
-          path: |
-            desktop/dist/ZFZS-Anime-Tracker/
-            desktop/dist/ZFZS-macOS.zip
+          name: ZFZS-Windows-${{ runner.arch }}
+          path: desktop/dist/ZFZS-Windows.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
+        with:
+          name: ZFZS-macOS-${{ runner.arch }}
+          path: desktop/dist/ZFZS-macOS.zip
           if-no-files-found: error

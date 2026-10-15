@@ -1,6 +1,6 @@
 # ZFZS 追番助手
 
-ZFZS 是一个以**原生桌面客户端**为主的本地追番工具，同时保留一个功能更完整的 Next.js 实验端，用于 Bangumi 日历、季度新番和 AI 推荐能力的持续迁移。
+ZFZS 是一个以**原生桌面客户端**为主的本地追番工具，支持 Bangumi 搜索、放送日历、季度新番及本地追番管理；同时保留 Next.js 实验端作为 AI 推荐等功能的参考实现。
 
 ## 仓库结构
 
@@ -61,8 +61,10 @@ npm ci
 npm run dev
 ```
 
-桌面端已接入 Bangumi 搜索；放送日历、季度页和 AI 推荐目前仍在 `web/`，尚未迁入桌面 UI。提醒目前为应用内列表，尚未实现关闭应用后的系统通知。
+桌面端的“发现番剧”已接入放送日历和季度新番，可直接加入追番；AI 推荐仍在 `web/`。提醒目前为应用内列表，尚未实现关闭应用后的系统通知。
 
-验证状态（2026-10-15）：Python 单测 17/17、原生窗口加载/错误恢复、Windows 独立程序启动、Bangumi 实时搜索均通过；Web lint/typecheck、92 项非数据库测试及生产构建通过。Docker Engine 无响应，13 项 PostgreSQL 测试尚未在本机执行；macOS 实机运行与签名待验证。
+验证状态（2026-10-15）：整合后 Python 单测 57/57、原生窗口检查 17/17 通过，真实日历和季度查询通过。Web lint/typecheck、92 项非数据库测试及生产构建已在前一轮通过。Docker Engine 已恢复可达，但本机 5432 是其他 PostgreSQL 17 服务，测试连接认证失败，13 项 PostgreSQL 测试未运行；macOS 实机运行与签名待验证。
 
 详细说明见 [desktop/README.md](desktop/README.md)、[web/README.md](web/README.md) 和 [docs/项目整合与跨平台进度书.md](docs/项目整合与跨平台进度书.md)。
+
+Mac 继续开发见 [MACOS_DEVELOPMENT.md](docs/MACOS_DEVELOPMENT.md)，本机数据库与发布环境快照见 [RELEASE_ENVIRONMENT_CHECK.md](docs/RELEASE_ENVIRONMENT_CHECK.md)。

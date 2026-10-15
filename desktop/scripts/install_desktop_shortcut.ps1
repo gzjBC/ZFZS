@@ -1,17 +1,22 @@
+[CmdletBinding()]
 param(
-    [string]$Destination = [Environment]::GetFolderPath("DesktopDirectory")
+    [string]$Destination = [Environment]::GetFolderPath("DesktopDirectory"),
+    [ValidateSet('Source', 'Packaged', 'Auto')]
+    [string]$Mode = 'Auto'
 )
 
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$launcher = Join-Path $PSScriptRoot "run_desktop.ps1"
+$launcher = Join-Path $projectRoot "start.bat"
 $packagedApp = Join-Path $projectRoot "dist\ZFZS-Anime-Tracker\ZFZS-Anime-Tracker.exe"
-$powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $destinationPath = [IO.Path]::GetFullPath($Destination)
 
 if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
     throw "Desktop launcher not found: $launcher"
+}
+if ($Mode -eq 'Packaged' -and -not (Test-Path -LiteralPath $packagedApp -PathType Leaf)) {
+    throw "Packaged app not found: $packagedApp. Build it first or select -Mode Source."
 }
 if (-not (Test-Path -LiteralPath $destinationPath -PathType Container)) {
     New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null
@@ -24,12 +29,12 @@ $iconLibrary = Join-Path $env:SystemRoot "System32\imageres.dll"
 
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = $powershell
-$shortcut.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcher`""
+$shortcut.TargetPath = $launcher
+$shortcut.Arguments = '-Mode Source'
 $shortcut.WorkingDirectory = $projectRoot
 $shortcut.Description = "Open ZFZS native anime tracker"
 $shortcut.IconLocation = "$iconLibrary,67"
-if (Test-Path -LiteralPath $packagedApp -PathType Leaf) {
+if ($Mode -ne 'Source' -and (Test-Path -LiteralPath $packagedApp -PathType Leaf)) {
     $shortcut.TargetPath = $packagedApp
     $shortcut.Arguments = ""
     $shortcut.WorkingDirectory = Split-Path -Parent $packagedApp
@@ -44,3 +49,5 @@ if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf)) {
 
 Write-Host "Desktop shortcut created:" -ForegroundColor Green
 Write-Host $shortcutPath
+Write-Host "Target: $($shortcut.TargetPath)"
+Write-Host 'Auto selects the current packaged app if present; rerun with -Mode Source to follow source changes.'

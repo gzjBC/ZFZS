@@ -7,7 +7,7 @@
 - `run_desktop.ps1` / `run_desktop.sh`：启动原生桌面窗口。
 - `install_desktop_shortcut.ps1`：Windows 桌面快捷方式；存在打包版时优先使用打包版。
 - `build_desktop.ps1` / `build_desktop.sh`：在当前系统打包原生应用。
-- `test.ps1`：单元测试与旧版 FastAPI 前端 E2E。
+- `test.ps1`：默认运行单元测试；`-NativeSmoke` 加测原生 UI，`-BrowserE2E` 加测旧版 FastAPI 前端，`-Live` 加测真实稀饭搜索。
 - `dev.ps1` / `start.ps1`：可选的旧版 FastAPI Web 调试服务。
 - `init_db.py`：创建 SQLite 数据库表。
 

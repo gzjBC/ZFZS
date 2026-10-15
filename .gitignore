@@ -3,6 +3,7 @@
 .playwright/
 .tmp/
 .venv/
+.venv.backup-*/
 .env
 .env.local
 node_modules/

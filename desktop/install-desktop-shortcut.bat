@@ -1,13 +1,16 @@
 @echo off
 setlocal
-cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\install_desktop_shortcut.ps1"
-if errorlevel 1 (
+pushd "%~dp0" || exit /b 1
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\install_desktop_shortcut.ps1" %*
+set "result=%errorlevel%"
+popd
+if not "%result%"=="0" (
   echo.
   echo Failed to create the desktop shortcut.
-  pause
-  exit /b 1
+  if not defined CI pause
+  exit /b %result%
 )
 echo.
 echo Desktop shortcut is ready.
-pause
+if not defined CI pause
+exit /b 0
