@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="本地运行的追番、进度与更新提醒助手">
+  <title>ZFZS 追番助手</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">追</span>
+        <div>
+          <p class="eyebrow">ZFZS · LOCAL ANIME TRACKER</p>
+          <h1>追番助手</h1>
+          <p class="subtitle">搜索、记录进度，在开播前收到提醒。</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <a class="button ghost" href="/docs" target="_blank" rel="noreferrer">API 文档</a>
+        <button id="manualAddBtn" class="button ghost" type="button">手动添加</button>
+        <button id="refreshBtn" class="button dark" type="button">刷新数据</button>
+      </div>
+    </header>
+
+    <section class="stats" aria-label="追番概览">
+      <article><span id="watchingStat">0</span><p>正在追</p></article>
+      <article><span id="finishedStat">0</span><p>已看完</p></article>
+      <article><span id="reminderStat">0</span><p>今日提醒</p></article>
+    </section>
+
+    <section class="search-panel" aria-labelledby="searchTitle">
+      <div class="search-copy">
+        <p class="section-kicker">发现新番</p>
+        <h2 id="searchTitle">从稀饭动漫搜索</h2>
+        <p>输入中文名、日文名或别名，结果可直接加入追番列表。</p>
+      </div>
+      <div class="search-controls">
+        <label class="search-field" for="keywordInput">
+          <span class="sr-only">番剧关键词</span>
+          <input id="keywordInput" type="search" placeholder="例如：无职转生" autocomplete="off">
+        </label>
+        <button id="searchBtn" class="button accent" type="button">搜索番剧</button>
+      </div>
+      <label class="toggle">
+        <input id="headedInput" type="checkbox">
+        <span>显示自动搜索的浏览器过程（调试用）</span>
+      </label>
+    </section>
+
+    <p id="statusText" class="status" role="status" aria-live="polite">正在载入本地数据…</p>
+
+    <section class="section" aria-labelledby="watchlistTitle">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">MY LIST</p>
+          <h2 id="watchlistTitle">我的追番</h2>
+        </div>
+        <div class="filter-group" role="group" aria-label="筛选追番">
+          <button class="filter active" type="button" data-filter="all">全部</button>
+          <button class="filter" type="button" data-filter="watching">正在追</button>
+          <button class="filter" type="button" data-filter="paused">暂停</button>
+          <button class="filter" type="button" data-filter="finished">已看完</button>
+        </div>
+        <span id="animeCount" class="count">0 部</span>
+      </div>
+      <div id="animeList" class="grid"></div>
+    </section>
+
+    <section class="section reminders" aria-labelledby="remindersTitle">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">TODAY</p>
+          <h2 id="remindersTitle">今日提醒</h2>
+        </div>
+        <span id="reminderCount" class="count">0 部</span>
+      </div>
+      <div id="reminderList" class="grid compact"></div>
+    </section>
+
+    <section id="resultsSection" class="section" aria-labelledby="resultsTitle" hidden>
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">SEARCH RESULTS</p>
+          <h2 id="resultsTitle">搜索结果</h2>
+        </div>
+        <span id="resultCount" class="count">0 部</span>
+      </div>
+      <div id="resultList" class="grid"></div>
+    </section>
+  </main>
+
+  <template id="animeCardTemplate">
+    <article class="anime-card">
+      <div class="poster-wrap">
+        <img class="poster" alt="">
+        <span class="poster-placeholder" aria-hidden="true">ZF</span>
+      </div>
+      <div class="anime-body">
+        <div class="anime-title-row"><h3></h3><span class="score"></span></div>
+        <div class="badges"></div>
+        <p class="meta"></p>
+        <div class="progress-wrap" hidden>
+          <div class="progress-label"><span>观看进度</span><strong></strong></div>
+          <div class="progress-track"><span></span></div>
+        </div>
+        <p class="summary"></p>
+        <div class="actions"></div>
+      </div>
+    </article>
+  </template>
+
+  <dialog id="reminderDialog" class="dialog">
+    <form id="reminderForm">
+      <div class="dialog-head">
+        <div><p class="section-kicker">REMINDER</p><h2>提醒设置</h2></div>
+        <button class="icon-button" type="button" data-close-dialog aria-label="关闭">×</button>
+      </div>
+      <p id="reminderAnimeTitle" class="dialog-subtitle"></p>
+      <label class="check-row">
+        <input id="reminderEnabledInput" type="checkbox">
+        <span>启用更新提醒</span>
+      </label>
+      <div class="form-grid">
+        <label>每周更新日
+          <select id="broadcastDayInput">
+            <option value="">暂不设置</option>
+            <option value="1">周一</option><option value="2">周二</option>
+            <option value="3">周三</option><option value="4">周四</option>
+            <option value="5">周五</option><option value="6">周六</option>
+            <option value="0">周日</option>
+          </select>
+        </label>
+        <label>更新时间<input id="broadcastTimeInput" type="time" value="20:00" required></label>
+        <label>提前提醒
+          <select id="reminderMinutesInput">
+            <option value="0">准点</option>
+            <option value="15">提前 15 分钟</option>
+            <option value="30">提前 30 分钟</option>
+            <option value="60">提前 1 小时</option>
+          </select>
+        </label>
+      </div>
+      <div class="dialog-actions">
+        <button class="button ghost" type="button" data-close-dialog>取消</button>
+        <button class="button accent" type="submit">保存设置</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="manualDialog" class="dialog">
+    <form id="manualForm">
+      <div class="dialog-head">
+        <div><p class="section-kicker">MANUAL ENTRY</p><h2>手动添加番剧</h2></div>
+        <button class="icon-button" type="button" data-close-dialog aria-label="关闭">×</button>
+      </div>
+      <div class="form-grid">
+        <label class="wide">番剧名称<input id="manualTitleInput" maxlength="255" required placeholder="请输入番剧名称"></label>
+        <label>总集数<input id="manualTotalInput" type="number" min="0" placeholder="未知可留空"></label>
+        <label>当前进度<input id="manualWatchedInput" type="number" min="0" value="0"></label>
+        <label class="wide">播放地址<input id="manualUrlInput" type="url" placeholder="https://…"></label>
+      </div>
+      <div class="dialog-actions">
+        <button class="button ghost" type="button" data-close-dialog>取消</button>
+        <button class="button accent" type="submit">添加到追番</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

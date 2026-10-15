@@ -1,0 +1,13 @@
+.venv/
+.tmp/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.playwright-cli/
+.env
+data/*.db
+data/*.db-*
+data/*.json
+build/
+dist/
+*.spec

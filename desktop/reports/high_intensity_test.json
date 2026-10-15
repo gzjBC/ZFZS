@@ -1,0 +1,67 @@
+[
+  {
+    "name": "server health",
+    "passed": true,
+    "detail": "http://127.0.0.1:61233/api/health"
+  },
+  {
+    "name": "front page renders",
+    "passed": true,
+    "detail": "主标题和中文工作台可见。"
+  },
+  {
+    "name": "home screenshot",
+    "passed": true,
+    "detail": "reports/screenshots/01_home.png"
+  },
+  {
+    "name": "mocked xifan search",
+    "passed": true,
+    "detail": "搜索结果由固定测试数据稳定渲染。"
+  },
+  {
+    "name": "import to watchlist",
+    "passed": true,
+    "detail": "导入成功且重复导入按钮被禁用。"
+  },
+  {
+    "name": "progress update",
+    "passed": true,
+    "detail": "进度加一并正确显示 1 / 12。"
+  },
+  {
+    "name": "reminder settings",
+    "passed": true,
+    "detail": "提醒日、时间和开关可保存。"
+  },
+  {
+    "name": "status and filter",
+    "passed": true,
+    "detail": "完结状态和筛选统计同步更新。"
+  },
+  {
+    "name": "delete watchlist item",
+    "passed": true,
+    "detail": "确认后可从列表移除番剧。"
+  },
+  {
+    "name": "manual entry",
+    "passed": true,
+    "detail": "无需外部数据源也可手动添加番剧。"
+  },
+  {
+    "name": "mobile viewport render",
+    "passed": true,
+    "detail": "reports/screenshots/04_mobile.png"
+  },
+  {
+    "name": "anime API returns list",
+    "passed": true,
+    "detail": "count=0"
+  },
+  {
+    "name": "reminders API returns list",
+    "passed": true,
+    "detail": "count=0"
+  }
+]
