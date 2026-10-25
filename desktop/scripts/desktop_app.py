@@ -54,6 +54,7 @@ from backend.app.service import anime_service, reminder_service
 
 
 APP_TITLE = "ZFZS 追番助手"
+APP_VERSION = "0.3.0"
 STATUS_LABELS = {"watching": "正在追", "paused": "暂停", "finished": "已看完"}
 DAY_LABELS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
 SEASON_MONTHS = {"1 月（冬季）": 1, "4 月（春季）": 4, "7 月（夏季）": 7, "10 月（秋季）": 10}
@@ -66,6 +67,7 @@ def _anime_to_dict(item) -> dict[str, Any]:
     return {
         "id": item.id,
         "title": item.title,
+        "cover_url": item.cover_url,
         "status": item.status,
         "watched_episodes": item.watched_episodes,
         "total_episodes": item.total_episodes,
@@ -138,7 +140,7 @@ class DesktopApp:
     def __init__(self, root: Tk):
         self.root = root
         self.root.title(APP_TITLE)
-        self.root.geometry("1120x760")
+        self.root.geometry("1240x860")
         self.root.minsize(900, 700)
         self.root.configure(bg="#f2f0eb")
 
@@ -171,6 +173,8 @@ class DesktopApp:
         self.background_status_text = StringVar(value="后台提醒状态待查询（不会自动启动）")
 
         self._configure_style()
+        from scripts.cover_view import CoverPresenter
+        self.cover_presenter = CoverPresenter(root, DESKTOP_DATA_DIR / "cache" / "covers")
         self._build_ui()
         self.root.after(50, self._poll_tasks)
         self.refresh_data()
@@ -197,6 +201,7 @@ class DesktopApp:
         style.configure("TButton", padding=(11, 7), font=("Microsoft YaHei UI", 9))
         style.configure("Treeview", rowheight=34, background="#fffdf8", fieldbackground="#fffdf8", foreground="#17201b", font=("Microsoft YaHei UI", 9), borderwidth=0)
         style.configure("Treeview.Heading", background="#e8eee8", foreground="#275d45", font=("Microsoft YaHei UI", 9, "bold"), padding=(8, 8))
+        style.configure("Poster.Treeview", rowheight=84)
         style.map("Treeview", background=[("selected", "#dce9e0")], foreground=[("selected", "#17201b")])
         style.configure("TNotebook", background="#f2f0eb", borderwidth=0)
         style.configure("TNotebook.Tab", padding=(18, 10), font=("Microsoft YaHei UI", 10, "bold"))
@@ -212,7 +217,7 @@ class DesktopApp:
         header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text=APP_TITLE, style="Header.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(header, text="本地原生应用 · 数据保存在本机 SQLite", style="Sub.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(header, text=f"v{APP_VERSION} · 封面版 · 数据保存在本机", style="Sub.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
         ttk.Button(header, text="数据 / 备份", command=self.open_transfer_dialog).grid(row=0, column=1, rowspan=2, padx=(8, 0))
         ttk.Button(header, text="手动添加", command=self.open_manual_dialog).grid(row=0, column=2, rowspan=2, padx=(8, 0))
         ttk.Button(header, text="刷新", style="Dark.TButton", command=self.refresh_data).grid(row=0, column=3, rowspan=2, padx=(8, 0))
@@ -264,10 +269,13 @@ class DesktopApp:
         status = ttk.Label(shell, textvariable=self.status_text, style="Sub.TLabel", anchor="w")
         status.grid(row=4, column=0, sticky="ew", pady=(12, 0))
 
-    def _tree(self, parent, columns: tuple[str, ...], headings: tuple[str, ...], widths: tuple[int, ...]):
-        frame = ttk.Frame(parent)
-        frame.pack(fill="both", expand=True)
-        tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
+    def _tree(self, parent, columns: tuple[str, ...], headings: tuple[str, ...], widths: tuple[int, ...], *, covers: bool = False):
+        outer = ttk.Frame(parent)
+        outer.pack(fill="both", expand=True)
+        outer.columnconfigure(0, weight=1)
+        outer.rowconfigure(0, weight=1)
+        tree = ttk.Treeview(outer, columns=columns, show="tree headings" if covers else "headings", selectmode="browse", style="Poster.Treeview" if covers else "Treeview")
+        frame = outer
         scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
         horizontal = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
         tree.configure(yscrollcommand=scrollbar.set, xscrollcommand=horizontal.set)
@@ -280,6 +288,10 @@ class DesktopApp:
         scrollbar.grid(row=0, column=1, sticky="ns")
         horizontal.grid(row=1, column=0, sticky="ew")
         tree.bind("<Double-1>", lambda _: self.open_selected_link(tree))
+        if covers:
+            tree.heading("#0", text="封面")
+            tree.column("#0", width=84, minwidth=84, stretch=False, anchor="center")
+            self.cover_presenter.register(tree, outer)
         return tree
 
     def _build_watch_tab(self) -> None:
@@ -295,6 +307,7 @@ class DesktopApp:
             ("title", "progress", "status", "source", "reminder", "score", "user_rating"),
             ("番剧", "进度", "状态", "来源更新", "提醒", "网站评分", "我的评分"),
             (220, 80, 75, 120, 190, 80, 80),
+            covers=True,
         )
         actions = ttk.Frame(self.watch_tab)
         actions.pack(side="bottom", fill="x", pady=(10, 0), before=self.watch_tree.master)
@@ -342,6 +355,7 @@ class DesktopApp:
             ("title", "year", "episodes", "status", "score"),
             ("番剧", "年份", "集数", "更新状态", "网站评分"),
             (430, 80, 90, 190, 70),
+            covers=True,
         )
 
     def _build_discovery_tab(self) -> None:
@@ -654,7 +668,9 @@ class DesktopApp:
         self._run_task("正在读取本地数据…", work, done)
 
     def render_watchlist(self) -> None:
+        previous = self.watch_tree.selection()
         self.watch_tree.delete(*self.watch_tree.get_children())
+        covers = []
         wanted = {"正在追": "watching", "暂停": "paused", "已看完": "finished"}.get(self.filter_status.get())
         for item in self.items.values():
             if wanted and item["status"] != wanted:
@@ -664,6 +680,8 @@ class DesktopApp:
                 item["source_status"] or "—", _reminder_text(item), item["score"] if item["score"] is not None else "—",
                 item["user_rating"] if item["user_rating"] is not None else "—",
             ))
+            covers.append((str(item["id"]), item["title"], item.get("cover_url")))
+        self._set_covers(self.watch_tree, covers, selected=previous[0] if previous else None)
 
     def render_reminders(self) -> None:
         self.reminder_tree.delete(*self.reminder_tree.get_children())
@@ -702,6 +720,12 @@ class DesktopApp:
                 item.title, item.year or "—", item.total_episodes or "—", item.status_text or "—",
                 item.score if item.score is not None else "—",
             ))
+        self._set_covers(tree, [(iid, item.title, item.cover_url) for iid, item in target.items()])
+
+    def _set_covers(self, tree, records, *, selected=None) -> None:
+        presenter = getattr(self, "cover_presenter", None)
+        if presenter is not None:
+            presenter.set_items(tree, records, selected=selected)
 
     def load_calendar(self, whole_week: bool = False) -> None:
         if whole_week:

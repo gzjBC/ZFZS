@@ -46,6 +46,7 @@ import tkinter
 tkinter.Tcl().eval('info patchlevel')
 if sys.argv[1] != 'Base':
     import fastapi, uvicorn, sqlalchemy, pydantic, pydantic_settings, requests, playwright
+    from PIL import Image
     def check(path):
         for line in path.read_text(encoding='utf-8').splitlines():
             line = line.strip()

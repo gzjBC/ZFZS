@@ -38,6 +38,8 @@ assert info['CFBundlePackageType'] == 'APPL'
 executable = bundle / 'Contents/MacOS' / info['CFBundleExecutable']
 assert executable.is_file() and os.access(executable, os.X_OK), executable
 assert any(p.is_file() for p in (bundle / 'Contents').rglob('_tkinter*.so')), 'Missing _tkinter extension'
+assert any(p.is_file() for p in (bundle / 'Contents').rglob('_imaging*.so')), 'Missing Pillow image decoder'
+assert any(p.is_file() for p in (bundle / 'Contents').rglob('certifi/cacert.pem')), 'Missing portable TLS certificates'
 assert tcltk_info.available and not tcltk_info.tcl_data_missing and not tcltk_info.tk_data_missing
 # System frameworks and Tcl/Tk 9 embedded libraries may not have loose .tcl files.
 missing = [name for name, _, _ in tcltk_info.data_files if not (bundle / 'Contents/Resources' / name).is_file()]

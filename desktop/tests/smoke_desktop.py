@@ -10,6 +10,7 @@ real background worker, OS configuration changes or user databases are used.
 from __future__ import annotations
 
 import json
+from io import BytesIO
 import os
 import sys
 import tempfile
@@ -19,6 +20,7 @@ from tkinter import Tk
 from unittest.mock import Mock, patch
 
 import requests
+from PIL import Image
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -42,16 +44,17 @@ from scripts.desktop_app import (  # noqa: E402
 from backend.app.schema.anime import AnimeCreate, AnimeUpdate  # noqa: E402
 from backend.app.schema.crawler import XifanAnimeResult  # noqa: E402
 from backend.app.service.recommendation_service import Recommendation  # noqa: E402
+from backend.app.service.cover_service import CoverData  # noqa: E402
 
 
 def main() -> None:
     Base.metadata.create_all(bind=engine)
     run_lightweight_migrations()
     with SessionLocal() as db:
-        unrelated = anime_service.create_anime(db, AnimeCreate(title="已有本地番剧", watched_episodes=3, score=8.1, tags="日常,治愈"))
+        unrelated = anime_service.create_anime(db, AnimeCreate(title="已有本地番剧", watched_episodes=3, score=8.1, tags="日常,治愈", cover_url="https://covers.example.test/local.png"))
         unrelated_id = unrelated.id
         existing = anime_service.import_search_result(db, XifanAnimeResult(
-            title="已有 Bangumi 番剧", source="bangumi", source_id="101", total_episodes=12,
+            title="已有 Bangumi 番剧", source="bangumi", source_id="101", total_episodes=12, cover_url="https://covers.example.test/bangumi.png",
         ))
         anime_service.update_anime(db, existing, AnimeUpdate(
             watched_episodes=5, status="paused", broadcast_day=1,
@@ -72,6 +75,15 @@ def main() -> None:
     state = {"season_fails": True}
     request_threads = []
     main_thread = threading.get_ident()
+    cover_threads = []
+    def fake_cover(url, cache_dir):
+        cover_threads.append(threading.get_ident())
+        def png(size):
+            output = BytesIO()
+            Image.new("RGB", size, "#4b795b").save(output, format="PNG")
+            return output.getvalue()
+        return CoverData(png((54, 76)), png((180, 254)))
+    app.cover_presenter.loader = fake_cover
     export_path = Path(TEMP_STORAGE.name) / "migration.json"
     backup_dir = Path(TEMP_STORAGE.name) / "backups"
 
@@ -101,6 +113,7 @@ def main() -> None:
                 {"weekday": {"id": 7}, "items": [{
                     "id": 101, "name_cn": "日历更新标题", "type": 2,
                     "air_date": "2026-10-18", "eps_count": 12,
+                    "images": {"large": "https://covers.example.test/calendar.png"},
                 }]},
                 {"weekday": {"id": 1}, "items": [{"id": 303, "name_cn": "不应出现的周一条目"}]},
             ]
@@ -110,7 +123,7 @@ def main() -> None:
             params = kwargs["params"]
             if params["year"] != 2026 or params["month"] not in (10, 11, 12):
                 raise AssertionError(f"Unexpected season parameters: {params}")
-            items = [{"id": 202, "name_cn": "季度新番测试", "type": 2, "date": "2026-10-10", "total_episodes": 12}] if params["month"] == 10 else []
+            items = [{"id": 202, "name_cn": "季度新番测试", "type": 2, "date": "2026-10-10", "total_episodes": 12, "images": {"large": "https://covers.example.test/season.png"}}] if params["month"] == 10 else []
             payload = {"data": items, "total": len(items), "offset": params["offset"], "limit": params["limit"]}
         else:
             raise AssertionError(f"Unexpected HTTP call: {url}")
@@ -305,7 +318,13 @@ def main() -> None:
         release_calendar.set()
 
     def after_load() -> None:
+        if not app.cover_presenter.images:
+            root.after(60, after_load)
+            return
         result["data_loaded"] = len(app.items) == 2
+        result["cover_images_created_in_real_tk"] = bool(app.cover_presenter.images)
+        result["cover_column_visible"] = app.watch_tree.heading("#0", "text") == "封面"
+        result["cover_download_off_ui_thread"] = bool(cover_threads) and all(thread != main_thread for thread in cover_threads)
         root.update_idletasks()
         buttons = [widget for frame in app.discovery_tab.winfo_children()
                    for widget in frame.winfo_children() if widget.winfo_class() == "TButton"]
@@ -327,6 +346,8 @@ def main() -> None:
         )
         app.notebook.select(app.watch_tab)
         root.update_idletasks()
+        app.cover_presenter.select(app.watch_tree)
+        result["selected_cover_preview_visible"] = app.watch_tree in app.cover_presenter.preview_photos
         watch_buttons = [widget for frame in app.watch_tab.winfo_children()
                          for widget in frame.winfo_children() if widget.winfo_class() == "TButton"]
         result["watch_minimum_window_usable"] = app.watch_tree.winfo_height() >= 70 and len(watch_buttons) == 8 and all(
@@ -373,6 +394,7 @@ def main() -> None:
             patch("backend.app.service.notification_service.stop_background_worker") as stop_worker, \
             patch("backend.app.service.notification_service.send_system_notification", side_effect=AssertionError("Real notifications are forbidden")), \
             patch("subprocess.Popen", side_effect=AssertionError("Real background processes are forbidden")), \
+            patch("backend.app.service.cover_service.load_cover", side_effect=fake_cover), \
             patch("requests.Session.get", side_effect=fake_get), \
             patch("requests.Session.post", side_effect=fake_post), \
             patch("requests.sessions.Session.request", side_effect=AssertionError("Real network is forbidden in smoke tests")):
