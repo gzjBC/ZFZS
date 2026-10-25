@@ -73,7 +73,7 @@ chmod +x scripts/run_desktop.sh scripts/build_desktop.sh
 
 PyInstaller 不是交叉编译器，macOS 应用必须在 Mac 上构建。
 
-仓库 Actions 中还提供手动运行的 `Build native desktop apps` 工作流，分别生成 Windows 与 macOS 产物。它们尚未做发行签名或 macOS notarization。Mac 构建也检查 Pillow 原生解码器；本轮封面版尚无新的 Mac 构建或目标机验收结果。
+仓库 Actions 中还提供手动运行的 `Build native desktop apps` 工作流，分别生成 Windows 与 macOS 产物。它们尚未做发行签名或 macOS notarization。`c858562` 的 [Windows x64 / macOS ARM64 构建](https://github.com/gzjBC/ZFZS/actions/runs/40169403163) 已成功；Mac 构建检查 Pillow 原生解码器、certifi、Tcl/Tk 及归档回验。目标 Mac 的 Finder/Gatekeeper 和通知仍需实机验收，ARM64 产物不代表 Intel 或 universal2。
 
 ## 测试
 
@@ -96,8 +96,8 @@ Windows：
 - 最终修复后单测：258 项，`OK (skipped=1)`。新增真实 socket/HTTPResponse 关闭生命周期、各类响应结尾、便携 TLS 信任和跨列表重试回归。此前同日 46 项原生 Tk 烟测通过，使用隔离数据库与模拟网络。
 - 首次 EXE 联网验收发现图片下载到最后一块后，关闭的连接仍被设置超时而误报失败；已修复，并重新构建独立更新包。Pillow 解码器、certifi 证书和 Tcl/Tk 检查通过。旧程序仍运行时不覆盖其文件。
 - 修复后，当前季度前三部作品的真实封面并发下载全部成功：万圣街特别篇、永远的大和号第七章、罗小黑战记学前篇；54×76 缩略图、180×254 预览及禁止再次联网的缓存读取均通过。
-- 桌面控制被用户停止后未继续操作窗口；修复包的实际 EXE 图片显示、原快捷方式最终切换仍待验收。远程 CI/构建状态另见项目进度书。
-- 已有历史绿色结果为 2026-10-15 的提交 `efd7b5e`：Windows/macOS/Web CI 和 Windows x64/macOS ARM64 云端构建通过；不包含本轮未推送的封面改动，也不替代目标 Mac 的图形界面、Gatekeeper 或通知验收。
+- 用户已授权恢复操作；旧窗口最小化且桌面工具无法激活，已请求用户恢复或正常关闭，未强制结束程序。修复包的实际 EXE 图片显示、原快捷方式最终切换仍待验收。
+- 本轮代码 `c858562` 已同步 GitHub，[Windows/macOS/Web CI](https://github.com/gzjBC/ZFZS/actions/runs/40169401314) 和 [Windows x64/macOS ARM64 打包](https://github.com/gzjBC/ZFZS/actions/runs/40169403163) 均通过。2026-10-15 的 `efd7b5e` 仅作历史记录；云端构建不替代目标 Mac 的图形界面、Gatekeeper 或通知验收。
 
 历史验证与本轮更新记录见[进度文档](docs/PROGRESS.md)。
 
