@@ -75,11 +75,23 @@ class CoverTests(unittest.TestCase):
 
     @contextmanager
     def wire_transport(self, wire, *, proxy):
-        # Only fixture creation may open real sockets (a local pair on Windows).
+        # Use loopback TCP on every OS: socketpair() is AF_UNIX on macOS and
+        # rejects HTTPConnection's TCP_NODELAY option before the HTTP read.
         # Request handling keeps real sockets, makefile(), HTTPConnection and
         # HTTPResponse; only destination connection setup is redirected.
         with patch.object(socket, "socket", self.socket_constructor):
-            client, peer = socket.socketpair()
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+                listener.settimeout(2)
+                listener.bind(("127.0.0.1", 0))
+                listener.listen(1)
+                client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                try:
+                    client.settimeout(2)
+                    client.connect(listener.getsockname())
+                    peer, _ = listener.accept()
+                except Exception:
+                    client.close()
+                    raise
         with client, peer:
             client.settimeout(2)
             peer.settimeout(2)
